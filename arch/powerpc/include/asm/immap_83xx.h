@@ -666,19 +666,6 @@ typedef struct immap {
 	u8			res7[0xC0000];
 } immap_t;
 
-#ifndef	CONFIG_ARCH_MPC834X
-#ifdef CONFIG_HAS_FSL_MPH_USB
-#define CONFIG_SYS_MPC83xx_USB1_OFFSET  0x22000	/* use the MPH controller */
-#define CONFIG_SYS_MPC83xx_USB2_OFFSET	0
-#else
-#define CONFIG_SYS_MPC83xx_USB1_OFFSET	0
-#define CONFIG_SYS_MPC83xx_USB2_OFFSET  0x23000	/* use the DR controller */
-#endif
-#else
-#define CONFIG_SYS_MPC83xx_USB1_OFFSET	0x22000
-#define CONFIG_SYS_MPC83xx_USB2_OFFSET  0x23000
-#endif
-
 #elif defined(CONFIG_ARCH_MPC8313)
 typedef struct immap {
 	sysconf83xx_t		sysconf;	/* System configuration */
@@ -712,51 +699,6 @@ typedef struct immap {
 	u8			res6[0xA000];
 	security83xx_t		security;
 	u8			res7[0xC0000];
-} immap_t;
-
-#elif defined(CONFIG_ARCH_MPC8315)
-typedef struct immap {
-	sysconf83xx_t		sysconf;	/* System configuration */
-	wdt83xx_t		wdt;		/* Watch Dog Timer (WDT) Registers */
-	rtclk83xx_t		rtc;		/* Real Time Clock Module Registers */
-	rtclk83xx_t		pit;		/* Periodic Interval Timer */
-	gtm83xx_t		gtm[2];		/* Global Timers Module */
-	ipic83xx_t		ipic;		/* Integrated Programmable Interrupt Controller */
-	arbiter83xx_t		arbiter;	/* System Arbiter Registers */
-	reset83xx_t		reset;		/* Reset Module */
-	clk83xx_t		clk;		/* System Clock Module */
-	pmc83xx_t		pmc;		/* Power Management Control Module */
-	gpio83xx_t		gpio[1];	/* General purpose I/O module */
-	u8			res0[0x1300];
-	ddr83xx_t		ddr;		/* DDR Memory Controller Memory */
-	fsl_i2c_t		i2c[1];		/* I2C Controllers */
-	u8			res1[0x1400];
-	duart83xx_t		duart[2];	/* DUART */
-	u8			res2[0x900];
-	fsl_lbc_t		im_lbc;		/* Local Bus Controller Regs */
-	u8			res3[0x1000];
-	spi8xxx_t		spi;		/* Serial Peripheral Interface */
-	dma83xx_t		dma;		/* DMA */
-	pciconf83xx_t		pci_conf[1];	/* PCI Software Configuration Registers */
-	u8			res4[0x80];
-	ios83xx_t		ios;		/* Sequencer */
-	pcictrl83xx_t		pci_ctrl[1];	/* PCI Controller Control and Status Registers */
-	u8			res5[0xa00];
-	pex83xx_t		pciexp[2];	/* PCI Express Controller */
-	u8			res6[0xb000];
-	tdm83xx_t		tdm;		/* TDM Controller */
-	u8			res7[0x1e00];
-	sata83xx_t		sata[2];	/* SATA Controller */
-	u8			res8[0x9000];
-	usb83xx_t		usb[1];		/* USB DR Controller */
-	tsec83xx_t		tsec[2];
-	u8			res9[0x6000];
-	tdmdmac83xx_t		tdmdmac;	/* TDM DMAC */
-	u8			res10[0x2000];
-	security83xx_t		security;
-	u8			res11[0xA3000];
-	serdes83xx_t		serdes[1];	/* SerDes Registers */
-	u8			res12[0x1CF00];
 } immap_t;
 
 #elif defined(CONFIG_ARCH_MPC8308)
@@ -941,8 +883,7 @@ typedef struct immap {
 	u8			res4[0x500];
 	fsl_lbc_t		im_lbc;		/* Local Bus Controller Regs */
 	u8			res5[0x1000];
-	u8			spi[0x100];
-	u8			res6[0xf00];
+	spi8xxx_t		spi;		/* Serial Peripheral Interface */
 	dma83xx_t		dma;		/* DMA */
 	pciconf83xx_t		pci_conf[1];	/* PCI Configuration Registers */
 	u8			res7[0x80];
@@ -967,6 +908,19 @@ typedef struct immap {
 } immap_t;
 #endif
 
+struct ccsr_gpio {
+	u32	gpdir;
+	u32	gpodr;
+	u32	gpdat;
+	u32	gpier;
+	u32	gpimr;
+	u32	gpicr;
+	union	{
+			u32	gpibe;
+			u8	res0[0xE8];
+	};
+};
+
 #define CONFIG_SYS_MPC8xxx_DDR_OFFSET	(0x2000)
 #define CONFIG_SYS_FSL_DDR_ADDR \
 			(CONFIG_SYS_IMMR + CONFIG_SYS_MPC8xxx_DDR_OFFSET)
@@ -977,15 +931,6 @@ typedef struct immap {
 #define CONFIG_SYS_MPC83xx_ESDHC_ADDR \
 			(CONFIG_SYS_IMMR + CONFIG_SYS_MPC83xx_ESDHC_OFFSET)
 
-#ifndef CONFIG_SYS_MPC83xx_USB1_OFFSET
-#define CONFIG_SYS_MPC83xx_USB1_OFFSET  0x23000
-#endif
-#define CONFIG_SYS_MPC83xx_USB1_ADDR \
-			(CONFIG_SYS_IMMR + CONFIG_SYS_MPC83xx_USB1_OFFSET)
-#if defined(CONFIG_ARCH_MPC834X)
-#define CONFIG_SYS_MPC83xx_USB2_ADDR \
-			(CONFIG_SYS_IMMR + CONFIG_SYS_MPC83xx_USB2_OFFSET)
-#endif
 #define CONFIG_SYS_LBC_ADDR (&((immap_t *)CONFIG_SYS_IMMR)->im_lbc)
 
 #define CONFIG_SYS_TSEC1_OFFSET		0x24000

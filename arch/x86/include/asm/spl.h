@@ -7,10 +7,9 @@
 #ifndef __asm_spl_h
 #define __asm_spl_h
 
-#define CONFIG_SPL_BOARD_LOAD_IMAGE
-
 enum {
 	BOOT_DEVICE_SPI_MMAP	= 10,
+	BOOT_DEVICE_FAST_SPI,
 	BOOT_DEVICE_CROS_VBOOT,
 };
 

@@ -10,8 +10,10 @@
  */
 
 #include <common.h>
+#include <display_options.h>
 #include <env.h>
 #include <init.h>
+#include <net.h>
 #include <watchdog.h>
 #include <asm/processor.h>
 #include <ioports.h>
@@ -32,6 +34,7 @@
 #include <fsl_usb.h>
 #include <hwconfig.h>
 #include <linux/compiler.h>
+#include <linux/delay.h>
 #include "mp.h"
 #ifdef CONFIG_CHAIN_OF_TRUST
 #include <fsl_validate.h>
@@ -54,6 +57,7 @@
 #ifdef CONFIG_U_QE
 #include <fsl_qe.h>
 #endif
+#include <dm.h>
 
 #ifdef CONFIG_SYS_FSL_SINGLE_SOURCE_CLK
 /*
@@ -146,70 +150,6 @@ static void config_qe_ioports(void)
 		open_drain	= qe_iop_conf_tab[i].open_drain;
 		assign		= qe_iop_conf_tab[i].assign;
 		qe_config_iopin(port, pin, dir, open_drain, assign);
-	}
-}
-#endif
-
-#ifdef CONFIG_CPM2
-void config_8560_ioports (volatile ccsr_cpm_t * cpm)
-{
-	int portnum;
-
-	for (portnum = 0; portnum < 4; portnum++) {
-		uint pmsk = 0,
-		     ppar = 0,
-		     psor = 0,
-		     pdir = 0,
-		     podr = 0,
-		     pdat = 0;
-		iop_conf_t *iopc = (iop_conf_t *) & iop_conf_tab[portnum][0];
-		iop_conf_t *eiopc = iopc + 32;
-		uint msk = 1;
-
-		/*
-		 * NOTE:
-		 * index 0 refers to pin 31,
-		 * index 31 refers to pin 0
-		 */
-		while (iopc < eiopc) {
-			if (iopc->conf) {
-				pmsk |= msk;
-				if (iopc->ppar)
-					ppar |= msk;
-				if (iopc->psor)
-					psor |= msk;
-				if (iopc->pdir)
-					pdir |= msk;
-				if (iopc->podr)
-					podr |= msk;
-				if (iopc->pdat)
-					pdat |= msk;
-			}
-
-			msk <<= 1;
-			iopc++;
-		}
-
-		if (pmsk != 0) {
-			volatile ioport_t *iop = ioport_addr (cpm, portnum);
-			uint tpmsk = ~pmsk;
-
-			/*
-			 * the (somewhat confused) paragraph at the
-			 * bottom of page 35-5 warns that there might
-			 * be "unknown behaviour" when programming
-			 * PSORx and PDIRx, if PPARx = 1, so I
-			 * decided this meant I had to disable the
-			 * dedicated function first, and enable it
-			 * last.
-			 */
-			iop->ppar &= tpmsk;
-			iop->psor = (iop->psor & tpmsk) | psor;
-			iop->podr = (iop->podr & tpmsk) | podr;
-			iop->pdat = (iop->pdat & tpmsk) | pdat;
-			iop->pdir = (iop->pdir & tpmsk) | pdir;
-			iop->ppar |= ppar;
-		}
 	}
 }
 #endif
@@ -472,15 +412,7 @@ ulong cpu_init_f(void)
 #endif
 #endif
 
-#ifdef CONFIG_CPM2
-	config_8560_ioports((ccsr_cpm_t *)CONFIG_SYS_MPC85xx_CPM_ADDR);
-#endif
-
        init_early_memctl_regs();
-
-#if defined(CONFIG_CPM2)
-	m8560_cpm_reset();
-#endif
 
 #if defined(CONFIG_QE) && !defined(CONFIG_U_QE)
 	/* Config QE ioports */
@@ -961,7 +893,9 @@ int cpu_init_r(void)
 #endif
 
 #ifdef CONFIG_FMAN_ENET
+#ifndef CONFIG_DM_ETH
 	fman_enet_init();
+#endif
 #endif
 
 #if defined(CONFIG_NXP_ESBC) && defined(CONFIG_FSL_CORENET)
@@ -970,8 +904,6 @@ int cpu_init_r(void)
 #endif
 
 #ifdef CONFIG_FSL_CAAM
-	sec_init();
-
 #if defined(CONFIG_ARCH_C29X)
 	if ((SVR_SOC_VER(svr) == SVR_C292) ||
 	    (SVR_SOC_VER(svr) == SVR_C293))
@@ -1010,6 +942,22 @@ int cpu_init_r(void)
 	return 0;
 }
 
+#ifdef CONFIG_ARCH_MISC_INIT
+int arch_misc_init(void)
+{
+	if (IS_ENABLED(CONFIG_FSL_CAAM)) {
+		struct udevice *dev;
+		int ret;
+
+		ret = uclass_get_device_by_driver(UCLASS_MISC, DM_DRIVER_GET(caam_jr), &dev);
+		if (ret)
+			printf("Failed to initialize caam_jr: %d\n", ret);
+	}
+
+	return 0;
+}
+#endif
+
 void arch_preboot_os(void)
 {
 	u32 msr;
@@ -1024,18 +972,20 @@ void arch_preboot_os(void)
 	mtmsr(msr);
 }
 
-void cpu_secondary_init_r(void)
+int cpu_secondary_init_r(void)
 {
+#ifdef CONFIG_QE
 #ifdef CONFIG_U_QE
 	uint qe_base = CONFIG_SYS_IMMR + 0x00140000; /* QE immr base */
-#elif defined CONFIG_QE
+#else
 	uint qe_base = CONFIG_SYS_IMMR + 0x00080000; /* QE immr base */
 #endif
 
-#ifdef CONFIG_QE
 	qe_init(qe_base);
 	qe_reset();
 #endif
+
+	return 0;
 }
 
 #ifdef CONFIG_BOARD_LATE_INIT

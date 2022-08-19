@@ -8,12 +8,6 @@
 	display0 = &lcdif;
 };
 
-&qspi {
-	flash0: n25q256a@0 {
-		compatible = "jedec,spi-nor";
-	};
-};
-
 &{/soc} {
 	u-boot,dm-pre-reloc;
 };
@@ -31,7 +25,7 @@
 	u-boot,dm-pre-reloc;
 
 	display0: display@0 {
-		bits-per-pixel = <16>;
+		bits-per-pixel = <24>;
 		bus-width = <24>;
 
 		display-timings {

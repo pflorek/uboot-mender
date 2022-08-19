@@ -4,18 +4,33 @@
  */
 
 #include <common.h>
+#include <env.h>
+#include <init.h>
+#include <asm/global_data.h>
+#include <miiphy.h>
+#include <netdev.h>
+#include <asm/io.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
-int dram_init(void)
+int board_mmc_get_env_dev(int devno)
 {
-	gd->ram_size = PHYS_SDRAM_SIZE;
+	return devno;
+}
 
-	return 0;
+static void setup_fec(void)
+{
+	struct iomuxc_gpr_base_regs *gpr =
+		(struct iomuxc_gpr_base_regs *)IOMUXC_GPR_BASE_ADDR;
+
+	/* Use 125M anatop REF_CLK1 for ENET1, not from external */
+	clrsetbits_le32(&gpr->gpr[1], 0x2000, 0);
 }
 
 int board_init(void)
 {
+	setup_fec();
+
 	return 0;
 }
 

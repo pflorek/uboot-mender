@@ -41,6 +41,10 @@ struct imx_pll14xx_clk {
 	int flags;
 };
 
+extern struct imx_pll14xx_clk imx_1416x_pll;
+extern struct imx_pll14xx_clk imx_1443x_pll;
+extern struct imx_pll14xx_clk imx_1443x_dram_pll;
+
 struct clk *imx_clk_pll14xx(const char *name, const char *parent_name,
 			    void __iomem *base,
 			    const struct imx_pll14xx_clk *pll_clk);
@@ -123,6 +127,16 @@ static inline struct clk *imx_clk_mux_flags(const char *name,
 	return clk_register_mux(NULL, name, parents, num_parents,
 				flags | CLK_SET_RATE_NO_REPARENT, reg, shift,
 				width, 0);
+}
+
+static inline struct clk *imx_clk_mux2_flags(const char *name,
+		void __iomem *reg, u8 shift, u8 width,
+		const char * const *parents,
+		int num_parents, unsigned long flags)
+{
+	return clk_register_mux(NULL, name, parents, num_parents,
+			flags | CLK_SET_RATE_NO_REPARENT | CLK_OPS_PARENT_ENABLE,
+			reg, shift, width, 0);
 }
 
 static inline struct clk *imx_clk_mux(const char *name, void __iomem *reg,

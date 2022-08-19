@@ -6,9 +6,14 @@
  */
 
 #include <common.h>
+#include <ahci.h>
+#include <blk.h>
 #include <command.h>
 #include <console.h>
 #include <cpu_func.h>
+#include <dm.h>
+#include <dm/device-internal.h>
+#include <log.h>
 #include <asm/io.h>
 #include <asm/processor.h>
 #include <asm/fsl_serdes.h>
@@ -16,33 +21,8 @@
 #include <libata.h>
 #include <fis.h>
 #include <sata.h>
+#include <linux/delay.h>
 #include "fsl_sata.h"
-
-#if CONFIG_IS_ENABLED(BLK)
-#include <dm.h>
-#include <ahci.h>
-#include <blk.h>
-#else
-#ifndef CONFIG_SYS_SATA1_FLAGS
-	#define CONFIG_SYS_SATA1_FLAGS	FLAGS_DMA
-#endif
-#ifndef CONFIG_SYS_SATA2_FLAGS
-	#define CONFIG_SYS_SATA2_FLAGS	FLAGS_DMA
-#endif
-
-static struct fsl_sata_info fsl_sata_info[] = {
-#ifdef CONFIG_SATA1
-	{CONFIG_SYS_SATA1, CONFIG_SYS_SATA1_FLAGS},
-#else
-	{0, 0},
-#endif
-#ifdef CONFIG_SATA2
-	{CONFIG_SYS_SATA2, CONFIG_SYS_SATA2_FLAGS},
-#else
-	{0, 0},
-#endif
-};
-#endif
 
 static inline void sdelay(unsigned long sec)
 {
@@ -82,11 +62,7 @@ static int ata_wait_register(unsigned __iomem *addr, u32 mask,
 	return (i < timeout_msec) ? 0 : -1;
 }
 
-#if !CONFIG_IS_ENABLED(BLK)
-int init_sata(int dev)
-#else
 static int init_sata(struct fsl_ata_priv *priv, int dev)
-#endif
 {
 	u32 length, align;
 	cmd_hdr_tbl_t *cmd_hdr;
@@ -122,18 +98,12 @@ static int init_sata(struct fsl_ata_priv *priv, int dev)
 	/* Zero all of the device driver struct */
 	memset((void *)sata, 0, sizeof(fsl_sata_t));
 
-	snprintf(sata->name, 12, "SATA%d:\n", dev);
+	snprintf(sata->name, 12, "SATA%d:", dev);
 
 	/* Set the controller register base address to device struct */
-#if !CONFIG_IS_ENABLED(BLK)
-	sata_dev_desc[dev].priv = (void *)sata;
-	reg = (fsl_sata_reg_t *)(fsl_sata_info[dev].sata_reg_base);
-	sata->dma_flag = fsl_sata_info[dev].flags;
-#else
 	reg = (fsl_sata_reg_t *)(priv->base + priv->offset * dev);
 	sata->dma_flag = priv->flag;
 	priv->fsl_sata = sata;
-#endif
 	sata->reg_base = reg;
 
 	/* Allocate the command header table, 4 bytes aligned */
@@ -233,10 +203,7 @@ static int init_sata(struct fsl_ata_priv *priv, int dev)
 	mdelay(100);
 
 	/* print sata device name */
-	if (!dev)
-		printf("%s ", sata->name);
-	else
-		printf("       %s ", sata->name);
+	printf("%s ", sata->name);
 
 	/* Wait PHY RDY signal changed for 500ms */
 	ata_wait_register(&reg->hstatus, HSTATUS_PHY_RDY,
@@ -737,17 +704,11 @@ static u32 ata_low_level_rw_lba28(fsl_sata_t *sata, u32 blknr, u32 blkcnt,
 /*
  * SATA interface between low level driver and command layer
  */
-#if !CONFIG_IS_ENABLED(BLK)
-ulong sata_read(int dev, ulong blknr, lbaint_t blkcnt, void *buffer)
-{
-	fsl_sata_t *sata = (fsl_sata_t *)sata_dev_desc[dev].priv;
-#else
 static ulong sata_read(struct udevice *dev, lbaint_t blknr, lbaint_t blkcnt,
 		       void *buffer)
 {
-	struct fsl_ata_priv *priv = dev_get_platdata(dev);
+	struct fsl_ata_priv *priv = dev_get_plat(dev);
 	fsl_sata_t *sata = priv->fsl_sata;
-#endif
 	u32 rc;
 
 	if (sata->lba48)
@@ -759,17 +720,11 @@ static ulong sata_read(struct udevice *dev, lbaint_t blknr, lbaint_t blkcnt,
 	return rc;
 }
 
-#if !CONFIG_IS_ENABLED(BLK)
-ulong sata_write(int dev, ulong blknr, lbaint_t blkcnt, const void *buffer)
-{
-	fsl_sata_t *sata = (fsl_sata_t *)sata_dev_desc[dev].priv;
-#else
 static ulong sata_write(struct udevice *dev, lbaint_t blknr, lbaint_t blkcnt,
 			const void *buffer)
 {
-	struct fsl_ata_priv *priv = dev_get_platdata(dev);
+	struct fsl_ata_priv *priv = dev_get_plat(dev);
 	fsl_sata_t *sata = priv->fsl_sata;
-#endif
 	u32 rc;
 
 	if (sata->lba48) {
@@ -800,17 +755,11 @@ static void fsl_sata_identify(fsl_sata_t *sata, u16 *id)
 	ata_swap_buf_le16(id, ATA_ID_WORDS);
 }
 
-#if !CONFIG_IS_ENABLED(BLK)
-int scan_sata(int dev)
-{
-	fsl_sata_t *sata = (fsl_sata_t *)sata_dev_desc[dev].priv;
-#else
 static int scan_sata(struct udevice *dev)
 {
-	struct blk_desc *desc = dev_get_uclass_platdata(dev);
-	struct fsl_ata_priv *priv = dev_get_platdata(dev);
+	struct blk_desc *desc = dev_get_uclass_plat(dev);
+	struct fsl_ata_priv *priv = dev_get_plat(dev);
 	fsl_sata_t *sata = priv->fsl_sata;
-#endif
 
 	unsigned char serial[ATA_ID_SERNO_LEN + 1];
 	unsigned char firmware[ATA_ID_FW_REV_LEN + 1];
@@ -852,22 +801,12 @@ static int scan_sata(struct udevice *dev)
 		debug("Device supports LBA28\n\r");
 #endif
 
-#if !CONFIG_IS_ENABLED(BLK)
-	memcpy(sata_dev_desc[dev].product, serial, sizeof(serial));
-	memcpy(sata_dev_desc[dev].revision, firmware, sizeof(firmware));
-	memcpy(sata_dev_desc[dev].vendor, product, sizeof(product));
-	sata_dev_desc[dev].lba = (u32)n_sectors;
-#ifdef CONFIG_LBA48
-	sata_dev_desc[dev].lba48 = sata->lba48;
-#endif
-#else
 	memcpy(desc->product, serial, sizeof(serial));
 	memcpy(desc->revision, firmware, sizeof(firmware));
 	memcpy(desc->vendor, product, sizeof(product));
 	desc->lba = n_sectors;
 #ifdef CONFIG_LBA48
 	desc->lba48 = sata->lba48;
-#endif
 #endif
 
 	/* Get the NCQ queue depth from device */
@@ -889,7 +828,6 @@ static int scan_sata(struct udevice *dev)
 	return 0;
 }
 
-#if CONFIG_IS_ENABLED(BLK)
 static const struct blk_ops sata_fsl_blk_ops = {
 	.read	= sata_read,
 	.write	= sata_write,
@@ -899,10 +837,10 @@ U_BOOT_DRIVER(sata_fsl_driver) = {
 	.name = "sata_fsl_blk",
 	.id = UCLASS_BLK,
 	.ops = &sata_fsl_blk_ops,
-	.platdata_auto_alloc_size = sizeof(struct fsl_ata_priv),
+	.plat_auto	= sizeof(struct fsl_ata_priv),
 };
 
-static int fsl_ata_ofdata_to_platdata(struct udevice *dev)
+static int fsl_ata_of_to_plat(struct udevice *dev)
 {
 	struct fsl_ata_priv *priv = dev_get_priv(dev);
 
@@ -917,15 +855,32 @@ static int fsl_ata_ofdata_to_platdata(struct udevice *dev)
 	return 0;
 }
 
+static int fsl_unbind_device(struct udevice *dev)
+{
+	int ret;
+
+	ret = device_remove(dev, DM_REMOVE_NORMAL);
+	if (ret)
+		return ret;
+
+	ret = device_unbind(dev);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
 static int fsl_ata_probe(struct udevice *dev)
 {
 	struct fsl_ata_priv *blk_priv, *priv;
 	struct udevice *blk;
+	int failed_number;
 	char sata_name[10];
 	int nr_ports;
 	int ret;
 	int i;
 
+	failed_number = 0;
 	priv = dev_get_priv(dev);
 	nr_ports = priv->number;
 	nr_ports = min(nr_ports, CONFIG_SYS_SATA_MAX_DEVICE);
@@ -943,18 +898,57 @@ static int fsl_ata_probe(struct udevice *dev)
 		ret = init_sata(priv, i);
 		if (ret) {
 			debug("%s: Failed to init sata\n", __func__);
-			return ret;
+			ret = fsl_unbind_device(blk);
+			if (ret)
+				return ret;
+
+			failed_number++;
+			continue;
 		}
 
-		blk_priv = dev_get_platdata(blk);
+		blk_priv = dev_get_plat(blk);
 		blk_priv->fsl_sata = priv->fsl_sata;
 		/* Scan SATA port */
 		ret = scan_sata(blk);
 		if (ret) {
 			debug("%s: Failed to scan bus\n", __func__);
-			return ret;
+			ret = fsl_unbind_device(blk);
+			if (ret)
+				return ret;
+
+			failed_number++;
+			continue;
+		}
+
+		ret = device_probe(dev);
+		if (ret < 0) {
+			debug("Probing %s failed (%d)\n", dev->name, ret);
+			ret = fsl_unbind_device(blk);
+			if (ret)
+				return ret;
+
+			failed_number++;
+			continue;
 		}
 	}
+
+	if (failed_number == nr_ports)
+		return -ENODEV;
+	else
+		return 0;
+}
+
+static int fsl_ata_remove(struct udevice *dev)
+{
+	fsl_sata_t *sata;
+	struct fsl_ata_priv *priv;
+
+	priv = dev_get_priv(dev);
+	sata = priv->fsl_sata;
+
+	free(sata->cmd_hdr_tbl_offset);
+	free(sata->cmd_desc_offset);
+	free(sata);
 
 	return 0;
 }
@@ -980,8 +974,8 @@ U_BOOT_DRIVER(fsl_ahci) = {
 	.id = UCLASS_AHCI,
 	.of_match = fsl_ata_ids,
 	.ops = &sata_fsl_ahci_ops,
-	.ofdata_to_platdata = fsl_ata_ofdata_to_platdata,
+	.of_to_plat = fsl_ata_of_to_plat,
 	.probe	= fsl_ata_probe,
-	.priv_auto_alloc_size = sizeof(struct fsl_ata_priv),
+	.remove = fsl_ata_remove,
+	.priv_auto	= sizeof(struct fsl_ata_priv),
 };
-#endif

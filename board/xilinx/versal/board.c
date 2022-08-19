@@ -5,22 +5,32 @@
  */
 
 #include <common.h>
+#include <cpu_func.h>
+#include <env.h>
 #include <fdtdec.h>
 #include <init.h>
+#include <image.h>
+#include <env_internal.h>
+#include <log.h>
 #include <malloc.h>
 #include <time.h>
+#include <asm/cache.h>
+#include <asm/global_data.h>
 #include <asm/io.h>
 #include <asm/arch/hardware.h>
 #include <asm/arch/sys_proto.h>
 #include <dm/device.h>
 #include <dm/uclass.h>
 #include <versalpl.h>
-#include <linux/sizes.h>
+#include "../common/board.h"
 
 DECLARE_GLOBAL_DATA_PTR;
 
 #if defined(CONFIG_FPGA_VERSALPL)
-static xilinx_desc versalpl = XILINX_VERSAL_DESC;
+static xilinx_desc versalpl = {
+	xilinx_versal, csu_dma, 1, &versal_op, 0, &versal_op, NULL,
+	FPGA_LEGACY
+};
 #endif
 
 int board_init(void)
@@ -31,6 +41,9 @@ int board_init(void)
 	fpga_init();
 	fpga_add(fpga_xilinx, &versalpl);
 #endif
+
+	if (CONFIG_IS_ENABLED(DM_I2C) && CONFIG_IS_ENABLED(I2C_EEPROM))
+		xilinx_read_eeprom();
 
 	return 0;
 }
@@ -64,7 +77,7 @@ int board_early_init_r(void)
 	 * Program freq register in System counter and
 	 * enable system counter.
 	 */
-	writel(COUNTER_FREQUENCY,
+	writel(CONFIG_COUNTER_FREQUENCY,
 	       &iou_scntr_secure->base_frequency_id_register);
 
 	debug("counter val 0x%x\n",
@@ -81,23 +94,27 @@ int board_early_init_r(void)
 	return 0;
 }
 
-int board_late_init(void)
+unsigned long do_go_exec(ulong (*entry)(int, char * const []), int argc,
+			 char *const argv[])
 {
-	u32 reg = 0;
-	u8 bootmode;
-	struct udevice *dev;
-	int bootseq = -1;
-	int bootseq_len = 0;
-	int env_targets_len = 0;
-	const char *mode;
-	char *new_targets;
-	char *env_targets;
-	ulong initrd_hi;
+	int ret = 0;
 
-	if (!(gd->flags & GD_FLG_ENV_DEFAULT)) {
-		debug("Saved variables - Skipping\n");
-		return 0;
+	if (current_el() > 1) {
+		smp_kick_all_cpus();
+		dcache_disable();
+		armv8_switch_to_el1(0x0, 0, 0, 0, (unsigned long)entry,
+				    ES_TO_AARCH64);
+	} else {
+		printf("FAIL: current EL is not above EL1\n");
+		ret = EINVAL;
 	}
+	return ret;
+}
+
+static u8 versal_get_bootmode(void)
+{
+	u8 bootmode;
+	u32 reg = 0;
 
 	reg = readl(&crp_base->boot_mode_usr);
 
@@ -106,11 +123,35 @@ int board_late_init(void)
 
 	bootmode = reg & BOOT_MODES_MASK;
 
+	return bootmode;
+}
+
+int board_late_init(void)
+{
+	u8 bootmode;
+	struct udevice *dev;
+	int bootseq = -1;
+	int bootseq_len = 0;
+	int env_targets_len = 0;
+	const char *mode;
+	char *new_targets;
+	char *env_targets;
+
+	if (!(gd->flags & GD_FLG_ENV_DEFAULT)) {
+		debug("Saved variables - Skipping\n");
+		return 0;
+	}
+
+	if (!CONFIG_IS_ENABLED(ENV_VARS_UBOOT_RUNTIME_CONFIG))
+		return 0;
+
+	bootmode = versal_get_bootmode();
+
 	puts("Bootmode: ");
 	switch (bootmode) {
 	case USB_MODE:
 		puts("USB_MODE\n");
-		mode = "dfu_usb";
+		mode = "usb_dfu0 usb_dfu1";
 		break;
 	case JTAG_MODE:
 		puts("JTAG_MODE\n");
@@ -130,19 +171,30 @@ int board_late_init(void)
 		break;
 	case EMMC_MODE:
 		puts("EMMC_MODE\n");
-		mode = "mmc0";
+		if (uclass_get_device_by_name(UCLASS_MMC,
+					      "mmc@f1050000", &dev) &&
+		    uclass_get_device_by_name(UCLASS_MMC,
+					      "sdhci@f1050000", &dev)) {
+			puts("Boot from EMMC but without SD1 enabled!\n");
+			return -1;
+		}
+		debug("mmc1 device found at %p, seq %d\n", dev, dev_seq(dev));
+		mode = "mmc";
+		bootseq = dev_seq(dev);
 		break;
 	case SD_MODE:
 		puts("SD_MODE\n");
 		if (uclass_get_device_by_name(UCLASS_MMC,
+					      "mmc@f1040000", &dev) &&
+		    uclass_get_device_by_name(UCLASS_MMC,
 					      "sdhci@f1040000", &dev)) {
 			puts("Boot from SD0 but without SD0 enabled!\n");
 			return -1;
 		}
-		debug("mmc0 device found at %p, seq %d\n", dev, dev->seq);
+		debug("mmc0 device found at %p, seq %d\n", dev, dev_seq(dev));
 
 		mode = "mmc";
-		bootseq = dev->seq;
+		bootseq = dev_seq(dev);
 		break;
 	case SD1_LSHFT_MODE:
 		puts("LVL_SHFT_");
@@ -150,14 +202,16 @@ int board_late_init(void)
 	case SD_MODE1:
 		puts("SD_MODE1\n");
 		if (uclass_get_device_by_name(UCLASS_MMC,
+					      "mmc@f1050000", &dev) &&
+		    uclass_get_device_by_name(UCLASS_MMC,
 					      "sdhci@f1050000", &dev)) {
 			puts("Boot from SD1 but without SD1 enabled!\n");
 			return -1;
 		}
-		debug("mmc1 device found at %p, seq %d\n", dev, dev->seq);
+		debug("mmc1 device found at %p, seq %d\n", dev, dev_seq(dev));
 
 		mode = "mmc";
-		bootseq = dev->seq;
+		bootseq = dev_seq(dev);
 		break;
 	default:
 		mode = "";
@@ -192,11 +246,7 @@ int board_late_init(void)
 
 	env_set("boot_targets", new_targets);
 
-	initrd_hi = gd->start_addr_sp - CONFIG_STACK_SIZE;
-	initrd_hi = round_down(initrd_hi, SZ_16M);
-	env_set_addr("initrd_high", (void *)initrd_hi);
-
-	return 0;
+	return board_late_init_xilinx();
 }
 
 int dram_init_banksize(void)
@@ -214,12 +264,63 @@ int dram_init_banksize(void)
 
 int dram_init(void)
 {
-	if (fdtdec_setup_mem_size_base() != 0)
+	if (fdtdec_setup_mem_size_base_lowest() != 0)
 		return -EINVAL;
 
 	return 0;
 }
 
-void reset_cpu(ulong addr)
+ulong board_get_usable_ram_top(ulong total_size)
 {
+	phys_size_t size;
+	phys_addr_t reg;
+	struct lmb lmb;
+
+	if (!total_size)
+		return gd->ram_top;
+
+	/* found enough not-reserved memory to relocated U-Boot */
+	lmb_init(&lmb);
+	lmb_add(&lmb, gd->ram_base, gd->ram_size);
+	boot_fdt_add_mem_rsv_regions(&lmb, (void *)gd->fdt_blob);
+	size = ALIGN(CONFIG_SYS_MALLOC_LEN + total_size, MMU_SECTION_SIZE);
+	reg = lmb_alloc(&lmb, size, MMU_SECTION_SIZE);
+
+	if (!reg)
+		reg = gd->ram_top - size;
+
+	return reg + size;
+}
+
+void reset_cpu(void)
+{
+}
+
+enum env_location env_get_location(enum env_operation op, int prio)
+{
+	u32 bootmode = versal_get_bootmode();
+
+	if (prio)
+		return ENVL_UNKNOWN;
+
+	switch (bootmode) {
+	case EMMC_MODE:
+	case SD_MODE:
+	case SD1_LSHFT_MODE:
+	case SD_MODE1:
+		if (IS_ENABLED(CONFIG_ENV_IS_IN_FAT))
+			return ENVL_FAT;
+		if (IS_ENABLED(CONFIG_ENV_IS_IN_EXT4))
+			return ENVL_EXT4;
+		return ENVL_NOWHERE;
+	case OSPI_MODE:
+	case QSPI_MODE_24BIT:
+	case QSPI_MODE_32BIT:
+		if (IS_ENABLED(CONFIG_ENV_IS_IN_SPI_FLASH))
+			return ENVL_SPI_FLASH;
+		return ENVL_NOWHERE;
+	case JTAG_MODE:
+	default:
+		return ENVL_NOWHERE;
+	}
 }

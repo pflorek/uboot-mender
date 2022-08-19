@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2009-2014 Freescale Semiconductor, Inc.
+ * Copyright 2020 NXP
  *
  * This file is derived from arch/powerpc/cpu/mpc85xx/cpu.c and
  * arch/powerpc/cpu/mpc86xx/cpu.c. Basically this file contains
@@ -15,10 +16,6 @@
 #include <asm/fsl_serdes.h>
 #include <phy.h>
 #include <hwconfig.h>
-
-#ifndef CONFIG_USB_MAX_CONTROLLER_COUNT
-#define CONFIG_USB_MAX_CONTROLLER_COUNT	1
-#endif
 
 #if defined(CONFIG_MP) && (defined(CONFIG_MPC85xx) || defined(CONFIG_MPC86xx))
 static int ft_del_cpuhandle(void *blob, int cpuhandle)
@@ -76,6 +73,14 @@ void ft_fixup_num_cores(void *blob) {
 
 int fdt_fixup_phy_connection(void *blob, int offset, phy_interface_t phyc)
 {
+	const char *conn;
+
+	/* Do NOT apply fixup for backplane modes specified in DT */
+	if (phyc == PHY_INTERFACE_MODE_XGMII) {
+		conn = fdt_getprop(blob, offset, "phy-connection-type", NULL);
+		if (is_backplane_mode(conn))
+			return 0;
+	}
 	return fdt_setprop_string(blob, offset, "phy-connection-type",
 					 phy_string_for_interface(phyc));
 }

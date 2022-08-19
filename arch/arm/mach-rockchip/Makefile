@@ -26,10 +26,15 @@ obj-$(CONFIG_ROCKCHIP_COMMON_BOARD) += board.o
 obj-$(CONFIG_MISC_INIT_R) += misc.o
 endif
 
+ifeq ($(CONFIG_TPL_BUILD),)
+obj-$(CONFIG_DISPLAY_CPUINFO) += cpu-info.o
+endif
+
 obj-$(CONFIG_$(SPL_TPL_)RAM) += sdram.o
 
 obj-$(CONFIG_ROCKCHIP_PX30) += px30/
 obj-$(CONFIG_ROCKCHIP_RK3036) += rk3036/
+obj-$(CONFIG_ROCKCHIP_RK3066) += rk3066/
 obj-$(CONFIG_ROCKCHIP_RK3128) += rk3128/
 obj-$(CONFIG_ROCKCHIP_RK3188) += rk3188/
 obj-$(CONFIG_ROCKCHIP_RK322X) += rk322x/
@@ -38,6 +43,7 @@ obj-$(CONFIG_ROCKCHIP_RK3308) += rk3308/
 obj-$(CONFIG_ROCKCHIP_RK3328) += rk3328/
 obj-$(CONFIG_ROCKCHIP_RK3368) += rk3368/
 obj-$(CONFIG_ROCKCHIP_RK3399) += rk3399/
+obj-$(CONFIG_ROCKCHIP_RK3568) += rk3568/
 obj-$(CONFIG_ROCKCHIP_RV1108) += rv1108/
 
 # Clear out SPL objects, in case this is a TPL build

@@ -19,13 +19,10 @@
 #define CONFIG_SYS_NS16550_COM1		NV_PA_APB_UARTA_BASE
 
 /* Environment in eMMC, at the end of 2nd "boot sector" */
-#define CONFIG_SYS_MMC_ENV_DEV		0
-#define CONFIG_SYS_MMC_ENV_PART		2
 
 /* SPI */
 #define CONFIG_SPI_FLASH_SIZE          (4 << 20)
 
-#include "tegra-common-usb-gadget.h"
 #include "tegra-common-post.h"
 
 #endif /* __CONFIG_H */

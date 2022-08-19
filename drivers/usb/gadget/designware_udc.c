@@ -4,12 +4,13 @@
  * TI OMAP1510 USB bus interface driver
  *
  * (C) Copyright 2009
- * Vipin Kumar, ST Micoelectronics, vipin.kumar@st.com.
+ * Vipin Kumar, STMicroelectronics, vipin.kumar@st.com.
  */
 
 #include <common.h>
 #include <serial.h>
 #include <asm/io.h>
+#include <linux/delay.h>
 
 #include <env.h>
 #include <usbdevice.h>

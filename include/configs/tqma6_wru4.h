@@ -7,10 +7,7 @@
 #define __CONFIG_TQMA6_WRU4_H
 
 /* Ethernet */
-#define CONFIG_FEC_XCV_TYPE		RMII
-#define CONFIG_ETHPRIME			"FEC"
 #define CONFIG_FEC_MXC_PHYADDR		0x01
-#define CONFIG_PHY_SMSC
 
 /* UART */
 #define CONFIG_MXC_UART_BASE		UART4_BASE
@@ -27,7 +24,6 @@
 
 /* LED */
 
-/* Bootcounter */
-#define CONFIG_SYS_BOOTCOUNT_BE
+/* I2C */
 
 #endif /* __CONFIG_TQMA6_WRU4_H */

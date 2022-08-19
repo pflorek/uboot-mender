@@ -6,11 +6,20 @@
 #include <common.h>
 #include <debug_uart.h>
 #include <dm.h>
+#include <hang.h>
+#include <init.h>
+#include <log.h>
 #include <ram.h>
 #include <spl.h>
 #include <version.h>
 #include <asm/io.h>
 #include <asm/arch-rockchip/bootrom.h>
+#include <linux/bitops.h>
+#include <linux/kconfig.h>
+
+#if CONFIG_IS_ENABLED(BANNER_PRINT)
+#include <timestamp.h>
+#endif
 
 #define TIMER_LOAD_COUNT_L	0x00
 #define TIMER_LOAD_COUNT_H	0x04
@@ -21,6 +30,7 @@
 
 __weak void rockchip_stimer_init(void)
 {
+#if defined(CONFIG_ROCKCHIP_STIMER_BASE)
 	/* If Timer already enabled, don't re-init it */
 	u32 reg = readl(CONFIG_ROCKCHIP_STIMER_BASE + TIMER_CONTROL_REG);
 
@@ -29,7 +39,7 @@ __weak void rockchip_stimer_init(void)
 
 #ifndef CONFIG_ARM64
 	asm volatile("mcr p15, 0, %0, c14, c0, 0"
-		     : : "r"(COUNTER_FREQUENCY));
+		     : : "r"(CONFIG_COUNTER_FREQUENCY));
 #endif
 
 	writel(0, CONFIG_ROCKCHIP_STIMER_BASE + TIMER_CONTROL_REG);
@@ -37,6 +47,7 @@ __weak void rockchip_stimer_init(void)
 	writel(0xffffffff, CONFIG_ROCKCHIP_STIMER_BASE + 4);
 	writel(TIMER_EN | TIMER_FMODE, CONFIG_ROCKCHIP_STIMER_BASE +
 	       TIMER_CONTROL_REG);
+#endif
 }
 
 void board_init_f(ulong dummy)
@@ -44,7 +55,7 @@ void board_init_f(ulong dummy)
 	struct udevice *dev;
 	int ret;
 
-#if defined(CONFIG_DEBUG_UART) && defined(CONFIG_TPL_SERIAL_SUPPORT)
+#if defined(CONFIG_DEBUG_UART) && defined(CONFIG_TPL_SERIAL)
 	/*
 	 * Debug UART can be used from here if required:
 	 *
@@ -67,8 +78,10 @@ void board_init_f(ulong dummy)
 
 	/* Init secure timer */
 	rockchip_stimer_init();
-	/* Init ARM arch timer in arch/arm/cpu/ */
-	timer_init();
+
+	/* Init ARM arch timer */
+	if (IS_ENABLED(CONFIG_SYS_ARCH_TIMER))
+		timer_init();
 
 	ret = uclass_get_device(UCLASS_RAM, 0, &dev);
 	if (ret) {

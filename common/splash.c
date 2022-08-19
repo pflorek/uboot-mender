@@ -21,6 +21,7 @@
  */
 
 #include <common.h>
+#include <display_options.h>
 #include <env.h>
 #include <splash.h>
 #include <lcd.h>
@@ -52,20 +53,20 @@ static struct splash_location default_splash_locations[] = {
 	},
 };
 
-#if defined(CONFIG_DM_VIDEO) && defined(CONFIG_VIDEO_LOGO)
+#ifdef CONFIG_VIDEO_LOGO
 
 #include <bmp_logo_data.h>
 
 static int splash_video_logo_load(void)
 {
 	char *splashimage;
-	u32 bmp_load_addr;
+	ulong bmp_load_addr;
 
 	splashimage = env_get("splashimage");
 	if (!splashimage)
 		return -ENOENT;
 
-	bmp_load_addr = simple_strtoul(splashimage, 0, 16);
+	bmp_load_addr = hextoul(splashimage, 0);
 	if (!bmp_load_addr) {
 		printf("Error: bad 'splashimage' address\n");
 		return -EFAULT;
@@ -162,7 +163,7 @@ int splash_display(void)
 	if (!s)
 		return -EINVAL;
 
-	addr = simple_strtoul(s, NULL, 16);
+	addr = hextoul(s, NULL);
 	ret = splash_screen_prepare();
 	if (ret)
 		return ret;

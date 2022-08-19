@@ -8,6 +8,8 @@
 #include <common.h>
 #include <command.h>
 #include <env.h>
+#include <image.h>
+#include <net.h>
 #include <vsprintf.h>
 #include <errno.h>
 #include <dm.h>
@@ -23,10 +25,7 @@
 #endif
 #include <u-boot/sha1.h>
 #include <u-boot/sha256.h>
-
-#ifndef CONFIG_SYS_MMC_ENV_DEV
-#define CONFIG_SYS_MMC_ENV_DEV	0
-#endif
+#include <u-boot/sha512.h>
 
 #if defined(CONFIG_ARMADA_8K)
 #define MAIN_HDR_MAGIC		0xB105B002
@@ -57,6 +56,21 @@ struct mvebu_image_header {
 #define IMAGE_VERSION_3_6_0	0x030600
 #define IMAGE_VERSION_3_5_0	0x030500
 
+struct tim_boot_flash_sign {
+	unsigned int id;
+	const char *name;
+};
+
+struct tim_boot_flash_sign tim_boot_flash_signs[] = {
+	{ 0x454d4d08, "mmc"  },
+	{ 0x454d4d0b, "mmc"  },
+	{ 0x5350490a, "spi"  },
+	{ 0x5350491a, "nand" },
+	{ 0x55415223, "uart" },
+	{ 0x53415432, "sata" },
+	{},
+};
+
 struct common_tim_data {
 	u32	version;
 	u32	identifier;
@@ -84,7 +98,47 @@ struct mvebu_image_info {
 	u32	encrypt_start_offset;
 	u32	encrypt_size;
 };
-#endif /* CONFIG_ARMADA_XXX */
+#elif defined(CONFIG_ARMADA_32BIT)
+
+/* Structure of the main header, version 1 (Armada 370/XP/375/38x/39x) */
+struct a38x_main_hdr_v1 {
+	u8  blockid;               /* 0x0       */
+	u8  flags;                 /* 0x1       */
+	u16 nandpagesize;          /* 0x2-0x3   */
+	u32 blocksize;             /* 0x4-0x7   */
+	u8  version;               /* 0x8       */
+	u8  headersz_msb;          /* 0x9       */
+	u16 headersz_lsb;          /* 0xA-0xB   */
+	u32 srcaddr;               /* 0xC-0xF   */
+	u32 destaddr;              /* 0x10-0x13 */
+	u32 execaddr;              /* 0x14-0x17 */
+	u8  options;               /* 0x18      */
+	u8  nandblocksize;         /* 0x19      */
+	u8  nandbadblklocation;    /* 0x1A      */
+	u8  reserved4;             /* 0x1B      */
+	u16 reserved5;             /* 0x1C-0x1D */
+	u8  ext;                   /* 0x1E      */
+	u8  checksum;              /* 0x1F      */
+};
+
+struct a38x_boot_mode {
+	unsigned int id;
+	const char *name;
+};
+
+/* The blockid header field values used to indicate boot device of image */
+struct a38x_boot_mode a38x_boot_modes[] = {
+	{ 0x4D, "i2c"  },
+	{ 0x5A, "spi"  },
+	{ 0x69, "uart" },
+	{ 0x78, "sata" },
+	{ 0x8B, "nand" },
+	{ 0x9C, "pex"  },
+	{ 0xAE, "mmc"  },
+	{},
+};
+
+#endif
 
 struct bubt_dev {
 	char name[8];
@@ -100,7 +154,7 @@ static ulong get_load_addr(void)
 
 	addr_str = env_get("loadaddr");
 	if (addr_str)
-		addr = simple_strtoul(addr_str, NULL, 16);
+		addr = hextoul(addr_str, NULL);
 	else
 		addr = CONFIG_SYS_LOAD_ADDR;
 
@@ -135,16 +189,6 @@ static int mmc_burn_image(size_t image_size)
 		return err;
 	}
 
-#ifdef CONFIG_SYS_MMC_ENV_PART
-	if (mmc->part_num != CONFIG_SYS_MMC_ENV_PART) {
-		err = mmc_switch_part(mmc_dev_num, CONFIG_SYS_MMC_ENV_PART);
-		if (err) {
-			printf("MMC partition switch failed\n");
-			return err;
-		}
-	}
-#endif
-
 	/* SD reserves LBA-0 for MBR and boots from LBA-1,
 	 * MMC/eMMC boots from LBA-0
 	 */
@@ -175,11 +219,6 @@ static int mmc_burn_image(size_t image_size)
 		return -ENOSPC;
 	}
 	printf("Done!\n");
-
-#ifdef CONFIG_SYS_MMC_ENV_PART
-	if (mmc->part_num != CONFIG_SYS_MMC_ENV_PART)
-		mmc_switch_part(mmc_dev_num, mmc->part_num);
-#endif
 
 	return 0;
 }
@@ -249,8 +288,8 @@ static int spi_burn_image(size_t image_size)
 	u32 erase_bytes;
 
 	/* Probe the SPI bus to get the flash device */
-	flash = spi_flash_probe(CONFIG_ENV_SPI_BUS,
-				CONFIG_ENV_SPI_CS,
+	flash = spi_flash_probe(CONFIG_SF_DEFAULT_BUS,
+				CONFIG_SF_DEFAULT_CS,
 				CONFIG_SF_DEFAULT_SPEED,
 				CONFIG_SF_DEFAULT_MODE);
 	if (!flash) {
@@ -258,9 +297,6 @@ static int spi_burn_image(size_t image_size)
 		return -ENOMEDIUM;
 	}
 
-#ifdef CONFIG_SPI_FLASH_PROTECTION
-	spi_flash_protect(flash, 0);
-#endif
 	erase_bytes = image_size +
 		(flash->erase_size - image_size % flash->erase_size);
 	printf("Erasing %d bytes (%d blocks) at offset 0 ...",
@@ -278,10 +314,6 @@ static int spi_burn_image(size_t image_size)
 		printf("Error!\n");
 	else
 		printf("Done!\n");
-
-#ifdef CONFIG_SPI_FLASH_PROTECTION
-	spi_flash_protect(flash, 1);
-#endif
 
 	return ret;
 }
@@ -323,7 +355,7 @@ static int nand_burn_image(size_t image_size)
 	/* Align U-Boot size to currently used blocksize */
 	image_size = ((image_size + (block_size - 1)) & (~(block_size - 1)));
 
-	/* Erase the U-BOOT image space */
+	/* Erase the U-Boot image space */
 	printf("Erasing 0x%x - 0x%x:...", 0, (int)image_size);
 	ret = nand_erase(mtd, 0, image_size);
 	if (ret) {
@@ -423,9 +455,14 @@ static int is_usb_active(void)
 #ifdef CONFIG_CMD_NET
 static size_t tftp_read_file(const char *file_name)
 {
-	/* update global variable load_addr before tftp file from network */
-	load_addr = get_load_addr();
-	return net_loop(TFTPGET);
+	int ret;
+
+	/*
+	 * update global variable image_load_addr before tftp file from network
+	 */
+	image_load_addr = get_load_addr();
+	ret = net_loop(TFTPGET);
+	return ret > 0 ? ret : 0;
 }
 
 static int is_tftp_active(void)
@@ -529,8 +566,10 @@ static int check_image_header(void)
 	int image_num;
 	u8 hash_160_output[SHA1_SUM_LEN];
 	u8 hash_256_output[SHA256_SUM_LEN];
+	u8 hash_512_output[SHA512_SUM_LEN];
 	sha1_context hash1_text;
 	sha256_context hash256_text;
+	sha512_context hash512_text;
 	u8 *hash_output;
 	u32 hash_algorithm_id;
 	u32 image_size_to_hash;
@@ -600,6 +639,12 @@ static int check_image_header(void)
 			sha256_finish(&hash256_text, hash_256_output);
 			hash_output = hash_256_output;
 			break;
+		case SHA512_SUM_LEN:
+			sha512_starts(&hash512_text);
+			sha512_update(&hash512_text, buff, image_size_to_hash);
+			sha512_finish(&hash512_text, hash_512_output);
+			hash_output = hash_512_output;
+			break;
 		default:
 			printf("Error: Unsupported hash_algorithm_id = %d\n",
 			       hash_algorithm_id);
@@ -618,7 +663,52 @@ static int check_image_header(void)
 
 	return 0;
 }
+#elif defined(CONFIG_ARMADA_32BIT)
+static size_t a38x_header_size(const struct a38x_main_hdr_v1 *h)
+{
+	if (h->version == 1)
+		return (h->headersz_msb << 16) | le16_to_cpu(h->headersz_lsb);
 
+	printf("Error: Invalid A38x image (header version 0x%x unknown)!\n",
+	       h->version);
+	return 0;
+}
+
+static uint8_t image_checksum8(const void *start, size_t len)
+{
+	u8 csum = 0;
+	const u8 *p = start;
+
+	while (len) {
+		csum += *p;
+		++p;
+		--len;
+	}
+
+	return csum;
+}
+
+static int check_image_header(void)
+{
+	u8 checksum;
+	const struct a38x_main_hdr_v1 *hdr =
+		(struct a38x_main_hdr_v1 *)get_load_addr();
+	const size_t image_size = a38x_header_size(hdr);
+
+	if (!image_size)
+		return -ENOEXEC;
+
+	checksum = image_checksum8(hdr, image_size);
+	checksum -= hdr->checksum;
+	if (checksum != hdr->checksum) {
+		printf("Error: Bad A38x image checksum. 0x%x != 0x%x\n",
+		       checksum, hdr->checksum);
+		return -ENOEXEC;
+	}
+
+	printf("Image checksum...OK!\n");
+	return 0;
+}
 #else /* Not ARMADA? */
 static int check_image_header(void)
 {
@@ -627,7 +717,44 @@ static int check_image_header(void)
 }
 #endif
 
-static int bubt_verify(size_t image_size)
+static int bubt_check_boot_mode(const struct bubt_dev *dst)
+{
+#if defined(CONFIG_ARMADA_3700) || defined(CONFIG_ARMADA_32BIT)
+	int mode;
+#if defined(CONFIG_ARMADA_3700)
+	const struct tim_boot_flash_sign *boot_modes = tim_boot_flash_signs;
+	const struct common_tim_data *hdr =
+		(struct common_tim_data *)get_load_addr();
+	u32 id = hdr->boot_flash_sign;
+#elif defined(CONFIG_ARMADA_32BIT)
+	const struct a38x_boot_mode *boot_modes = a38x_boot_modes;
+	const struct a38x_main_hdr_v1 *hdr =
+		(struct a38x_main_hdr_v1 *)get_load_addr();
+	u32 id = hdr->blockid;
+#endif
+
+	for (mode = 0; boot_modes[mode].name; mode++) {
+		if (boot_modes[mode].id == id)
+			break;
+	}
+
+	if (!boot_modes[mode].name) {
+		printf("Error: unknown boot device in image header: 0x%x\n", id);
+		return -ENOEXEC;
+	}
+
+	if (strcmp(boot_modes[mode].name, dst->name) == 0)
+		return 0;
+
+	printf("Error: image meant to be booted from \"%s\", not \"%s\"!\n",
+	       boot_modes[mode].name, dst->name);
+	return -ENOEXEC;
+#else
+	return 0;
+#endif
+}
+
+static int bubt_verify(const struct bubt_dev *dst)
 {
 	int err;
 
@@ -635,6 +762,12 @@ static int bubt_verify(size_t image_size)
 	err = check_image_header();
 	if (err) {
 		printf("Error: Image header verification failed\n");
+		return err;
+	}
+
+	err = bubt_check_boot_mode(dst);
+	if (err) {
+		printf("Error: Image boot mode verification failed\n");
 		return err;
 	}
 
@@ -664,7 +797,7 @@ static int bubt_read_file(struct bubt_dev *src)
 static int bubt_is_dev_active(struct bubt_dev *dev)
 {
 	if (!dev->active) {
-		printf("Device \"%s\" not supported by U-BOOT image\n",
+		printf("Device \"%s\" not supported by U-Boot image\n",
 		       dev->name);
 		return 0;
 	}
@@ -698,12 +831,12 @@ struct bubt_dev *find_bubt_dev(char *dev_name)
 #define DEFAULT_BUBT_DST "nand"
 #elif defined(CONFIG_MVEBU_MMC_BOOT)
 #define DEFAULT_BUBT_DST "mmc"
-else
+#else
 #define DEFAULT_BUBT_DST "error"
 #endif
 #endif /* DEFAULT_BUBT_DST */
 
-int do_bubt_cmd(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+int do_bubt_cmd(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 {
 	struct bubt_dev *src, *dst;
 	size_t image_size;
@@ -736,11 +869,11 @@ int do_bubt_cmd(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	dst = find_bubt_dev(dst_dev_name);
 	if (!dst) {
 		printf("Error: Unknown destination \"%s\"\n", dst_dev_name);
-		return -EINVAL;
+		return 1;
 	}
 
 	if (!bubt_is_dev_active(dst))
-		return -ENODEV;
+		return 1;
 
 	/* Figure out the source device */
 	src = find_bubt_dev(src_dev_name);
@@ -752,20 +885,20 @@ int do_bubt_cmd(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	if (!bubt_is_dev_active(src))
 		return -ENODEV;
 
-	printf("Burning U-BOOT image \"%s\" from \"%s\" to \"%s\"\n",
+	printf("Burning U-Boot image \"%s\" from \"%s\" to \"%s\"\n",
 	       net_boot_file_name, src->name, dst->name);
 
 	image_size = bubt_read_file(src);
 	if (!image_size)
-		return -EIO;
+		return 1;
 
-	err = bubt_verify(image_size);
+	err = bubt_verify(dst);
 	if (err)
-		return err;
+		return 1;
 
 	err = bubt_write_file(dst, image_size);
 	if (err)
-		return err;
+		return 1;
 
 	return 0;
 }
@@ -774,9 +907,9 @@ U_BOOT_CMD(
 	bubt, 4, 0, do_bubt_cmd,
 	"Burn a u-boot image to flash",
 	"[file-name] [destination [source]]\n"
-	"\t-file-name     The image file name to burn. Default = flash-image.bin\n"
-	"\t-destination   Flash to burn to [spi, nand, mmc]. Default = active boot device\n"
-	"\t-source        The source to load image from [tftp, usb, mmc]. Default = tftp\n"
+	"\t-file-name     The image file name to burn. Default = " CONFIG_MVEBU_UBOOT_DFLT_NAME "\n"
+	"\t-destination   Flash to burn to [spi, nand, mmc]. Default = " DEFAULT_BUBT_DST "\n"
+	"\t-source        The source to load image from [tftp, usb, mmc]. Default = " DEFAULT_BUBT_SRC "\n"
 	"Examples:\n"
 	"\tbubt - Burn flash-image.bin from tftp to active boot device\n"
 	"\tbubt flash-image-new.bin nand - Burn flash-image-new.bin from tftp to NAND flash\n"

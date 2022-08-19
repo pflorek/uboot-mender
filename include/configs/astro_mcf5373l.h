@@ -22,23 +22,22 @@
  * set the card type to actually compile for; either of
  * the possibilities listed below has to be used!
  */
-#define CONFIG_ASTRO_V532	1
+#define ASTRO_V532	1
 
-#if CONFIG_ASTRO_V532
+#if ASTRO_V532
 #define ASTRO_ID	0xF8
-#elif CONFIG_ASTRO_V512
+#elif ASTRO_V512
 #define ASTRO_ID	0xFA
-#elif CONFIG_ASTRO_TWIN7S2
+#elif ASTRO_TWIN7S2
 #define ASTRO_ID	0xF9
-#elif CONFIG_ASTRO_V912
+#elif ASTRO_V912
 #define ASTRO_ID	0xFC
-#elif CONFIG_ASTRO_COFDMDUOS2
+#elif ASTRO_COFDMDUOS2
 #define ASTRO_ID	0xFB
 #else
 #error No card type defined!
 #endif
 
-/* Command line configuration */
 /*
  * CONFIG_RAM defines if u-boot is loaded via BDM (or started from
  * a different bootloader that has already performed RAM setup) or
@@ -52,20 +51,7 @@
 #define ENABLE_JFFS	1
 #endif
 
-#define CONFIG_MCFRTC
-#undef RTC_DEBUG
-
-/* Timer */
-#define CONFIG_MCFTMR
-#undef CONFIG_MCFPIT
-
 /* I2C */
-#define CONFIG_SYS_I2C
-#define CONFIG_SYS_I2C_FSL
-#define CONFIG_SYS_FSL_I2C_SPEED	80000
-#define CONFIG_SYS_FSL_I2C_SLAVE	0x7F
-#define CONFIG_SYS_FSL_I2C_OFFSET	0x58000
-#define CONFIG_SYS_IMMR			CONFIG_SYS_MBAR
 
 /*
  * Defines processor clock - important for correct timings concerning serial
@@ -76,11 +62,6 @@
 #define CONFIG_SYS_CPU_CLK		(CONFIG_SYS_CLK * 3)
 #define CONFIG_SYS_SDRAM_SIZE		32		/* SDRAM size in MB */
 
-#define CONFIG_SYS_CORE_SRAM_SIZE	0x8000
-#define CONFIG_SYS_CORE_SRAM		0x80000000
-
-#define CONFIG_SYS_UNIFY_CACHE
-
 /*
  * Define baudrate for UART1 (console output, tftp, ...)
  * default value of CONFIG_BAUDRATE for Sentec board: 19200 baud
@@ -88,7 +69,6 @@
  * in u-boot command interface
  */
 
-#define CONFIG_MCFUART
 #define CONFIG_SYS_UART_PORT		(2)
 #define CONFIG_SYS_UART2_ALT3_GPIO
 
@@ -99,7 +79,6 @@
  */
 
 #ifndef CONFIG_MONITOR_IS_IN_RAM
-#define CONFIG_WATCHDOG
 #define CONFIG_WATCHDOG_TIMEOUT 3355	/* timeout in milliseconds */
 #endif
 
@@ -148,32 +127,12 @@
  * by external update.c; This is not included in mainline because
  * it needs non-blocking CFI routines.
  */
-#ifdef CONFIG_MONITOR_IS_IN_RAM
-#define CONFIG_BOOTCOMMAND	""	/* no autoboot in this case */
-#else
-#if CONFIG_ASTRO_V532
-#define CONFIG_BOOTCOMMAND	"protect off 0x80000 0x1ffffff;run env_check;"\
-				"run xilinxload&&run alteraload&&bootm 0x80000;"\
-				"update;reset"
-#else
-#define CONFIG_BOOTCOMMAND	"protect off 0x80000 0x1ffffff;run env_check;"\
-				"run xilinxload&&bootm 0x80000;update;reset"
-#endif
-#endif
 
-/* default RAM address for user programs */
-#define CONFIG_SYS_LOAD_ADDR	0x20000
-
-#define CONFIG_FPGA_COUNT	1
-#define CONFIG_SYS_FPGA_PROG_FEEDBACK
 #define CONFIG_SYS_FPGA_WAIT		1000
 
 /* End of user parameters to be customized */
 
 /* Defines memory range for test */
-
-#define CONFIG_SYS_MEMTEST_START	0x40020000
-#define CONFIG_SYS_MEMTEST_END		0x41ffffff
 
 /*
  * Low Level Configuration Settings
@@ -196,9 +155,6 @@
 #define CONFIG_SYS_INIT_RAM_ADDR	0x80000000
 #define CONFIG_SYS_INIT_RAM_SIZE		0x8000
 #define CONFIG_SYS_INIT_RAM_CTRL	0x221
-#define CONFIG_SYS_GBL_DATA_OFFSET	(CONFIG_SYS_INIT_RAM_SIZE - \
-					 GENERATED_GBL_DATA_SIZE)
-#define CONFIG_SYS_INIT_SP_OFFSET	CONFIG_SYS_GBL_DATA_OFFSET
 
 /*
  * Start addresses for the final memory configuration
@@ -235,18 +191,8 @@
 
 #define CONFIG_SYS_FLASH_BASE		0x00000000
 
-#ifdef	CONFIG_MONITOR_IS_IN_RAM
-#define CONFIG_SYS_MONITOR_BASE		CONFIG_SYS_TEXT_BASE
-#else
-/* This is mainly used during relocation in start.S */
-#define CONFIG_SYS_MONITOR_BASE		(CONFIG_SYS_FLASH_BASE + 0x400)
-#endif
 /* Reserve 256 kB for Monitor */
 #define CONFIG_SYS_MONITOR_LEN		(256 << 10)
-
-#define CONFIG_SYS_BOOTPARAMS_LEN	(64 * 1024)
-/* Reserve 128 kB for malloc() */
-#define CONFIG_SYS_MALLOC_LEN		(128 << 10)
 
 /*
  * For booting Linux, the board info and command line data
@@ -257,12 +203,8 @@
 						(CONFIG_SYS_SDRAM_SIZE << 20))
 
 /* FLASH organization */
-#define CONFIG_SYS_MAX_FLASH_BANKS	1
-#define CONFIG_SYS_MAX_FLASH_SECT	259
-#define CONFIG_SYS_FLASH_ERASE_TOUT	1000
 
 #define CONFIG_SYS_FLASH_SIZE		0x2000000
-#define CONFIG_SYS_FLASH_CFI_NONBLOCK	1
 
 #define LDS_BOARD_TEXT \
 	. = DEFINED(env_offset) ? env_offset : .; \
@@ -277,7 +219,6 @@
 #endif
 
 /* Cache Configuration */
-#define CONFIG_SYS_CACHELINE_SIZE	16
 
 #define ICACHE_STATUS			(CONFIG_SYS_INIT_RAM_ADDR + \
 					 CONFIG_SYS_INIT_RAM_SIZE - 8)

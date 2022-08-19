@@ -23,3 +23,17 @@
 &ahci1 {
 	u-boot,dm-spl;
 };
+
+&i2c0 {
+	u-boot,dm-spl;
+
+	eeprom@52 {
+		u-boot,dm-spl;
+	};
+
+	eeprom@53 {
+		u-boot,dm-spl;
+	};
+};
+
+#include "mvebu-u-boot.dtsi"

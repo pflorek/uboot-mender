@@ -11,6 +11,7 @@
  * e.g. PCI controllers need this
  */
 
+#include <asm/cache.h>
 #include <asm/io.h>
 
 #ifdef CONFIG_SYS_OHCI_SWAP_REG_ACCESS
@@ -150,7 +151,7 @@ struct ohci_hcca {
  * Maximum number of root hub ports.
  */
 #ifndef CONFIG_SYS_USB_OHCI_MAX_ROOT_PORTS
-# error "CONFIG_SYS_USB_OHCI_MAX_ROOT_PORTS undefined!"
+#define CONFIG_SYS_USB_OHCI_MAX_ROOT_PORTS 1
 #endif
 
 /*

@@ -8,6 +8,7 @@
 #include <asm/global_data.h>
 #include <fsl_ifc.h>
 #include <asm/io.h>
+#include <linux/delay.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -29,10 +30,6 @@ ulong cpu_init_f(void)
 
 	return 0;
 }
-
-#ifndef CONFIG_SYS_FSL_TBCLK_DIV
-#define CONFIG_SYS_FSL_TBCLK_DIV 8
-#endif
 
 void udelay(unsigned long usec)
 {

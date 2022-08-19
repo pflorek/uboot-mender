@@ -12,6 +12,8 @@
 
 /* #define DEBUG */
 #include <common.h>
+#include <log.h>
+#include <linux/delay.h>
 #include <linux/types.h>
 #include <linux/err.h>
 #include <asm/io.h>
@@ -455,7 +457,7 @@ static void ipu_reset(void)
  * @param	dev	The device structure for the IPU passed in by the
  *			driver framework.
  *
- * @return      Returns 0 on success or negative error code on error
+ * Return:      Returns 0 on success or negative error code on error
  */
 int ipu_probe(void)
 {
@@ -572,7 +574,7 @@ void ipu_dump_registers(void)
  * @param       params  Input parameter containing union of channel
  *                      initialization parameters.
  *
- * @return      Returns 0 on success or negative error code on fail
+ * Return:      Returns 0 on success or negative error code on fail
  */
 int32_t ipu_init_channel(ipu_channel_t channel, ipu_channel_params_t *params)
 {
@@ -1004,7 +1006,7 @@ static void ipu_ch_param_init(int ch,
  * @param       v		private v offset for additional cropping,
  *				zero if not used.
  *
- * @return      Returns 0 on success or negative error code on fail
+ * Return:      Returns 0 on success or negative error code on fail
  */
 int32_t ipu_init_channel_buffer(ipu_channel_t channel, ipu_buffer_t type,
 				uint32_t pixel_fmt,
@@ -1059,7 +1061,7 @@ int32_t ipu_init_channel_buffer(ipu_channel_t channel, ipu_buffer_t type,
  *
  * @param       channel         Input parameter for the logical channel ID.
  *
- * @return      This function returns 0 on success or negative error code on
+ * Return:      This function returns 0 on success or negative error code on
  *              fail.
  */
 int32_t ipu_enable_channel(ipu_channel_t channel)
@@ -1137,7 +1139,7 @@ void ipu_clear_buffer_ready(ipu_channel_t channel, ipu_buffer_t type,
  * @param       wait_for_stop   Flag to set whether to wait for channel end
  *                              of frame or return immediately.
  *
- * @return      This function returns 0 on success or negative error code on
+ * Return:      This function returns 0 on success or negative error code on
  *              fail.
  */
 int32_t ipu_disable_channel(ipu_channel_t channel)

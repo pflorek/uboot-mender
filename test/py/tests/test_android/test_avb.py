@@ -8,7 +8,7 @@
 This tests Android Verified Boot 2.0 support in U-boot:
 
 For additional details about how to build proper vbmeta partition
-check doc/android/avb2.txt
+check doc/android/avb2.rst
 
 For configuration verification:
 - Corrupt boot partition and check for failure
@@ -66,7 +66,7 @@ def test_avb_mmc_uuid(u_boot_console):
             part_list[cur_partname] = guid_to_check[1]
 
     # lets check all guids with avb get_guid
-    for part, guid in part_list.iteritems():
+    for part, guid in part_list.items():
         avb_guid_resp = u_boot_console.run_command('avb get_uuid %s' % part)
         assert guid == avb_guid_resp.split('UUID: ')[1]
 

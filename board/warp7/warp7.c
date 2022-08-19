@@ -5,10 +5,12 @@
  */
 
 #include <init.h>
+#include <net.h>
 #include <asm/arch/clock.h>
 #include <asm/arch/imx-regs.h>
 #include <asm/arch/mx7-pins.h>
 #include <asm/arch/sys_proto.h>
+#include <asm/global_data.h>
 #include <asm/gpio.h>
 #include <asm/mach-imx/hab.h>
 #include <asm/mach-imx/iomux-v3.h>
@@ -24,9 +26,6 @@
 #include <asm/bootm.h>
 
 DECLARE_GLOBAL_DATA_PTR;
-
-#define UART_PAD_CTRL  (PAD_CTL_DSE_3P3V_49OHM | PAD_CTL_PUS_PU100KOHM | \
-			PAD_CTL_HYS)
 
 int dram_init(void)
 {
@@ -44,30 +43,13 @@ static iomux_v3_cfg_t const wdog_pads[] = {
 	MX7D_PAD_GPIO1_IO00__WDOG1_WDOG_B | MUX_PAD_CTRL(NO_PAD_CTRL),
 };
 
-static iomux_v3_cfg_t const uart1_pads[] = {
-	MX7D_PAD_UART1_TX_DATA__UART1_DCE_TX | MUX_PAD_CTRL(UART_PAD_CTRL),
-	MX7D_PAD_UART1_RX_DATA__UART1_DCE_RX | MUX_PAD_CTRL(UART_PAD_CTRL),
-};
-
-static void setup_iomux_uart(void)
-{
-	imx_iomux_v3_setup_multiple_pads(uart1_pads, ARRAY_SIZE(uart1_pads));
-};
-
-int board_early_init_f(void)
-{
-	setup_iomux_uart();
-
-	return 0;
-}
-
 #ifdef CONFIG_DM_PMIC
 int power_init_board(void)
 {
 	struct udevice *dev;
 	int ret, dev_id, rev_id;
 
-	ret = pmic_get("pfuze3000", &dev);
+	ret = pmic_get("pfuze3000@8", &dev);
 	if (ret == -ENODEV)
 		return 0;
 	if (ret != 0)
@@ -84,7 +66,7 @@ int power_init_board(void)
 }
 #endif
 
-int board_eth_init(bd_t *bis)
+int board_eth_init(struct bd_info *bis)
 {
 	int ret = 0;
 
@@ -132,7 +114,7 @@ int checkboard(void)
 int board_late_init(void)
 {
 	struct wdog_regs *wdog = (struct wdog_regs *)WDOG1_BASE_ADDR;
-#ifdef CONFIG_SERIAL_TAG
+#ifdef CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
 	struct tag_serialnr serialnr;
 	char serial_string[0x20];
 #endif
@@ -154,7 +136,7 @@ int board_late_init(void)
 	env_set_ulong(HAB_ENABLED_ENVNAME, 0);
 #endif
 
-#ifdef CONFIG_SERIAL_TAG
+#ifdef CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
 	/* Set serial# standard environment variable based on OTP settings */
 	get_board_serial(&serialnr);
 	snprintf(serial_string, sizeof(serial_string), "WaRP7-0x%08x%08x",

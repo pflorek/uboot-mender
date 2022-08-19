@@ -28,6 +28,8 @@
 #include <common.h>
 #include <command.h>
 #include <dm.h>
+#include <log.h>
+#include <malloc.h>
 #include <memalign.h>
 #include <asm/processor.h>
 #include <linux/compiler.h>
@@ -36,6 +38,7 @@
 #include <asm/unaligned.h>
 #include <errno.h>
 #include <usb.h>
+#include <linux/delay.h>
 
 #define USB_BUFSIZ	512
 
@@ -45,10 +48,6 @@ char usb_started; /* flag for the started/stopped USB status */
 #if !CONFIG_IS_ENABLED(DM_USB)
 static struct usb_device usb_dev[USB_MAX_DEVICE];
 static int dev_index;
-
-#ifndef CONFIG_USB_MAX_CONTROLLER_COUNT
-#define CONFIG_USB_MAX_CONTROLLER_COUNT 1
-#endif
 
 /***************************************************************************
  * Init USB Device
@@ -169,6 +168,12 @@ int usb_detect_change(void)
 	}
 
 	return change;
+}
+
+/* Lock or unlock async schedule on the controller */
+__weak int usb_lock_async(struct usb_device *dev, int lock)
+{
+	return 0;
 }
 
 /*
