@@ -63,9 +63,9 @@
 
 /* Environment */
 #define ENV_DEVICE_SETTINGS \
-	"stdin=serial,usbkbd\0" \
-	"stdout=serial,vidconsole\0" \
-	"stderr=serial,vidconsole\0"
+	"stdin=usbkbd\0" \
+	"stdout=vidconsole\0" \
+	"stderr=vidconsole\0"
 
 #ifdef CONFIG_ARM64
 #define FDT_HIGH "ffffffffffffffff"
@@ -162,6 +162,7 @@
 
 #define CONFIG_EXTRA_ENV_SETTINGS \
 	"dhcpuboot=usb start; dhcp u-boot.uimg; bootm\0" \
+    "silent=1\0" \
 	ENV_DEVICE_SETTINGS \
 	ENV_DFU_SETTINGS \
 	ENV_MEM_LAYOUT_SETTINGS \
